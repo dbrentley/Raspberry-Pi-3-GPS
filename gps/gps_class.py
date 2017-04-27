@@ -1,6 +1,9 @@
 import os
+import time
+import math
 import serial
 import threading
+from datetime import datetime
 
 class GPS:
     """
@@ -13,11 +16,13 @@ class GPS:
     """
 
     data = {}
+    zones = {}
     running = False
     device = None
     thread = None
 
     utc_time = 0
+    local_time = None
     lat_raw = 0
     lat = 0
     lat_d = None
@@ -81,12 +86,27 @@ class GPS:
         self.lat = "{0:.6f}".format(float(self.lat_raw[:2]) + (float(self.lat_raw[2:]) / 60))
         self.lon = "-{0:.6f}".format(float(self.lon_raw[:3]) + (float(self.lon_raw[3:]) / 60))
 
+        self.local_time = self.utc_to_local(self.utc_time)
+
     def gpvtg(self, d):
         self.kph = d[6]
         self.mph = self.kph_to_mph(self.kph)
 
     def meters_to_feet(self, m):
-        return "{0:.1f}".format(float(m) * 3.28084)
+        return "{}".format(round(float(m) * 3.28084))
+        #return "{0:.1f}".format(float(m) * 3.28084)
 
     def kph_to_mph(self, kph):
         return kph * 0.621371
+
+    def utc_to_local(self, utc):
+        # TODO: do some real offset stuff
+        hh = (int(utc[:2]) - 7)
+        mm = utc[2:4]
+        ss = utc[4:6]
+        if hh > 12:
+            hh -= 12
+            ampm = "p"
+        else:
+            ampm = "a"
+        return "{}:{}:{}{}".format(hh, mm, ss, ampm)
