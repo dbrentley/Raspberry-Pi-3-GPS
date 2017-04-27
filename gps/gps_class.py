@@ -1,5 +1,6 @@
 import os
 import serial
+import threading
 
 class GPS:
     """
@@ -14,10 +15,13 @@ class GPS:
     data = {}
     running = False
     device = None
+    thread = None
 
     utc_time = 0
+    lat_raw = 0
     lat = 0
     lat_d = None
+    lon_raw = 0
     lon = 0
     lon_d = None
     quality = 0
@@ -29,14 +33,24 @@ class GPS:
     separation_u = None
     age = 0
     station = 0
+    kph = 0
+    mph = 0
 
     def __init__(self, device):
         os.nice(19)
         self.device = device
         self.data = { 'gpgga': self.gpgga, 'gpvtg': self.gpvtg }
-        
+
     def start(self):
         self.running = True
+        self.thread = threading.Thread(target=self.main_thread)
+        self.thread.start()
+
+    def stop(self):
+        self.running = False
+        self.thread.join()
+
+    def main_thread(self):
         with serial.Serial(self.device, 9600, timeout=1) as ser:
             while self.running:
                 line = ser.readline()
@@ -47,36 +61,32 @@ class GPS:
                 except:
                     pass
 
-    def stop(self):
-        self.running = False
-
     def gpgga(self, d):
         # Global Positioning System Fix Data
         self.utc_time = d[0] # hhmmss.ss = UTC of position
-        self.lat = d[1] # llll.ll = Latitude of position
+        self.lat_raw = d[1] # llll.ll = Latitude of position
         self.lat_d = d[2] # a = N or S
-        self.lon = d[3] # yyyyy.yy = Longitude of position
+        self.lon_raw = d[3] # yyyyy.yy = Longitude of position
         self.lon_d = d[4] # a = E or W
         self.quality = d[5] # GPS quality (0=no fix, 1=GPS fix, 2=Dif. GPS fix)
         self.sats = d[6] # xx = Number of satellites in use
         self.dilution_h = d[7] # x.x = Horizontal dilution of precision
-        self.altitude = d[8] # x.x = Antenna altitude above mean-sea-level
+        self.altitude = self.meters_to_feet(d[8]) # x.x = Antenna altitude above mean-sea-level
         self.units = d[9] # M = Units of antenna altitude, meters
         self.separation = d[10] # x.x = Geoidal separation
         self.separation_u = d[11] # M = Units of geoidal separation, meters
         self.age = d[12] # x.x = Age of differential GPS data (seconds)
         self.station = d[13] # xxxx = Differential reference station ID
 
+        self.lat = "{0:.6f}".format(float(self.lat_raw[:2]) + (float(self.lat_raw[2:]) / 60))
+        self.lon = "-{0:.6f}".format(float(self.lon_raw[:3]) + (float(self.lon_raw[3:]) / 60))
+
     def gpvtg(self, d):
         self.kph = d[6]
+        self.mph = self.kph_to_mph(self.kph)
 
     def meters_to_feet(self, m):
-        return m * 3.28084
+        return "{0:.1f}".format(float(m) * 3.28084)
 
     def kph_to_mph(self, kph):
         return kph * 0.621371
-
-    def decimal_degrees(self, lat, lon):
-        lat = "{0:.6f}".format(float(lat[:2]) + (float(lat[2:]) / 60))
-        lon = "-{0:.6f}".format(float(lon[:3]) + (float(lon[3:]) / 60))
-        return "{}, {}".format(lat, lon)
